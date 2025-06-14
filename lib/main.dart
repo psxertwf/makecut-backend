@@ -125,14 +125,14 @@ class _MakeCutHomeState extends State<MakeCutHome> {
     showTempMessage('Downloading...');
     try {
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:5000/download'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'url': url,
-          'audio': isAudioEnabled,
-          'quality': selectedQuality,
-        }),
-      );
+  Uri.parse('https://makecut-backend.onrender.com/download'), // use real endpoint
+  headers: {'Content-Type': 'application/json'},
+  body: jsonEncode({
+    'url': url,
+    'audio': isAudioEnabled,
+    'quality': selectedQuality,
+  }),
+);
 
       final result = jsonDecode(response.body);
       if (result['status'] == 'success') {
@@ -368,26 +368,26 @@ class _DownloadHistoryScreenState extends State<DownloadHistoryScreen> {
   }
 
   Future<void> fetchAutoSave() async {
-    final response = await http.get(Uri.parse('http://127.0.0.1:5000/autosave'));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      setState(() {
-        autoSave = data['enabled'];
-      });
-    }
+  final response = await http.get(Uri.parse('https://makecut-backend.onrender.com/autosave'));
+  if (response.statusCode == 200) {
+    final data = jsonDecode(response.body);
+    setState(() {
+      autoSave = data['enabled'];
+    });
   }
+}
 
   Future<void> updateAutoSave(bool value) async {
     setState(() => autoSave = value);
     await http.post(
-      Uri.parse('http://127.0.0.1:5000/autosave'),
+      Uri.parse('https://makecut-backend.onrender.com/autosave'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'enabled': value}),
     );
   }
 
   Future<void> fetchHistory() async {
-    final response = await http.get(Uri.parse('http://127.0.0.1:5000/history'));
+    final response = await http.get(Uri.parse('https://makecut-backend.onrender.com/history'));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       setState(() {
