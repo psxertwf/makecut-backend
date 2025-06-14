@@ -233,5 +233,5 @@ def set_autosave():
         json.dump({"enabled": enabled}, f)
     return jsonify({"status": "updated", "enabled": enabled})
 
-if __name__ == "__main__":
-app.run(host='0.0.0.0', port=10000, debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000, debug=True)
