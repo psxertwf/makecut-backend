@@ -5,20 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:gallery_saver/gallery_saver.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ Set your test device ID here
   final config = RequestConfiguration(testDeviceIds: ['40a7628bba9c83845e9fc979bb7b38ea']);
   MobileAds.instance.updateRequestConfiguration(config);
-
   await MobileAds.instance.initialize();
   runApp(const MakeCutApp());
 }
-
 
 class MakeCutApp extends StatelessWidget {
   const MakeCutApp({super.key});
@@ -35,11 +33,9 @@ class MakeCutApp extends StatelessWidget {
 
 class MakeCutHome extends StatefulWidget {
   const MakeCutHome({super.key});
-
   @override
   State<MakeCutHome> createState() => _MakeCutHomeState();
 }
-
 class _MakeCutHomeState extends State<MakeCutHome> {
   final TextEditingController _urlController = TextEditingController();
   bool isAudioEnabled = true;
@@ -53,7 +49,7 @@ class _MakeCutHomeState extends State<MakeCutHome> {
 
   @override
   void initState() {
-    super.initState();  
+    super.initState();
     _loadAd();
     Future.delayed(const Duration(seconds: 3), () {
       if (_isAdReady && !_hasShownStartupAd) {
@@ -66,7 +62,7 @@ class _MakeCutHomeState extends State<MakeCutHome> {
 
   void _loadAd() {
     RewardedAd.load(
-      adUnitId: 'ca-app-pub-3940256099942544/1712485313', // ✅ RewardedAd (Test)
+      adUnitId: 'ca-app-pub-3940256099942544/1712485313', // Test Ad
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
@@ -89,56 +85,43 @@ class _MakeCutHomeState extends State<MakeCutHome> {
         _loadAd();
       });
     } else {
-      showTempMessage("Ad not ready. Try again soon.");
-    }
-  }
-  void openHistory() {
-    if (_isAdReady) {
-      _rewardedAd?.show(
-        onUserEarnedReward: (ad, reward) {
-          _loadAd();
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const DownloadHistoryScreen(),
-            ),
-          );
-        },
-      );
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const DownloadHistoryScreen(),
-        ),
-      );
+      showTempMessage("Ad not ready. Starting download anyway.");
+      downloadVideo();
+      _loadAd();
     }
   }
 
+  Future<String> resolveRedirect(String url) async {
+    final res = await http.get(Uri.parse(url));
+    return res.request?.url.toString() ?? url;
+  }
+
   Future<void> downloadVideo() async {
-    final url = _urlController.text.trim();
-    if (url.isEmpty) {
+    final inputUrl = _urlController.text.trim();
+    if (inputUrl.isEmpty) {
       showTempMessage('Please enter a video URL.');
       return;
     }
 
+    final url = await resolveRedirect(inputUrl);
+
     showTempMessage('Downloading...');
     try {
       final response = await http.post(
-  Uri.parse('https://makecut-backend.onrender.com/download'), // use real endpoint
-  headers: {'Content-Type': 'application/json'},
-  body: jsonEncode({
-    'url': url,
-    'audio': isAudioEnabled,
-    'quality': selectedQuality,
-  }),
-);
+        Uri.parse('https://makecut-backend.onrender.com/download'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'url': url,
+          'audio': isAudioEnabled,
+          'quality': selectedQuality,
+        }),
+      );
 
       final result = jsonDecode(response.body);
       if (result['status'] == 'success') {
-        final filePath = "${result['path']}\\${result['file']}";
-        await Process.run('explorer', [filePath]);
-        showTempMessage('Downloaded!');
+        final filePath = '${result['path']}/${result['file']}';
+        await GallerySaver.saveVideo(filePath, toDcim: true, albumName: 'MakeCut');
+        showTempMessage('Saved to gallery!');
       } else {
         showTempMessage('Failed: ${result['message']}');
       }
@@ -146,7 +129,6 @@ class _MakeCutHomeState extends State<MakeCutHome> {
       showTempMessage('Error: $e');
     }
   }
-
   void showTempMessage(String msg) {
     setState(() {
       status = msg;
@@ -298,7 +280,12 @@ class _MakeCutHomeState extends State<MakeCutHome> {
                         MouseRegion(
                           cursor: SystemMouseCursors.click,
                           child: GestureDetector(
-                            onTap: openHistory,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => DownloadHistoryScreen()),
+                             );
+                            }, // 👈 ADD THIS COMMA RIGHT HERE
                             child: Container(
                               decoration: BoxDecoration(
                                 color: const Color(0xFF1C1C1C),
@@ -363,19 +350,19 @@ class _DownloadHistoryScreenState extends State<DownloadHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    fetchAutoSave();
     fetchHistory();
+    fetchAutoSaveStatus();
   }
 
-  Future<void> fetchAutoSave() async {
-  final response = await http.get(Uri.parse('https://makecut-backend.onrender.com/autosave'));
-  if (response.statusCode == 200) {
-    final data = jsonDecode(response.body);
-    setState(() {
-      autoSave = data['enabled'];
-    });
+  Future<void> fetchAutoSaveStatus() async {
+    final response = await http.get(Uri.parse('https://makecut-backend.onrender.com/autosave'));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      setState(() {
+        autoSave = data['enabled'] ?? true;
+      });
+    }
   }
-}
 
   Future<void> updateAutoSave(bool value) async {
     setState(() => autoSave = value);
@@ -405,18 +392,9 @@ class _DownloadHistoryScreenState extends State<DownloadHistoryScreen> {
       final file = File(path);
       if (await file.exists()) {
         await file.delete();
-        print("Deleted: $path");
-      } else {
-        print("File not found: $path");
       }
-    } catch (e) {
-      print("Error deleting file: $e");
-    }
-    fetchHistory(); // Refresh history
-  }
-
-  void openInMediaPlayer(String path) {
-    Process.run('explorer', [path]);
+    } catch (_) {}
+    fetchHistory();
   }
 
   void renameFile(String oldPath, String newName) async {
@@ -425,11 +403,21 @@ class _DownloadHistoryScreenState extends State<DownloadHistoryScreen> {
     try {
       await File(oldPath).rename(newPath);
       fetchHistory();
-    } catch (e) {
-      print('Rename failed: $e');
-    }
+    } catch (_) {}
   }
 
+  Future<void> saveToGallery(String path) async {
+    try {
+      await GallerySaver.saveVideo(path, toDcim: true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saved to Gallery'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -460,8 +448,10 @@ class _DownloadHistoryScreenState extends State<DownloadHistoryScreen> {
                           child: const Icon(Icons.arrow_back, color: Colors.white),
                         ),
                       ),
-                      const Text('Download History',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      const Text(
+                        'Download History',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
                       Column(
                         children: [
                           const Text('AutoSave', style: TextStyle(fontSize: 14, color: Colors.white)),
@@ -479,83 +469,80 @@ class _DownloadHistoryScreenState extends State<DownloadHistoryScreen> {
                 ),
                 const Divider(color: Colors.white24, thickness: 0.5),
                 Expanded(
-                  child: Center(
-                    child: videos.isEmpty
-                        ? const Text("No videos found.", style: TextStyle(color: Colors.white54))
-                        : ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: videos.length,
-                            itemBuilder: (_, index) {
-                              final fileData = videos[index];
-                              return Container(
-                                margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 32),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1A1A1A),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.white12),
-                                ),
-                                child: ListTile(
-                                  leading: const Icon(Icons.video_file, color: Colors.white, size: 32),
-                                  title: Text(fileData['filename'], style: const TextStyle(color: Colors.white)),
-                                  subtitle: Text(fileData['size'], style: const TextStyle(color: Colors.white70)),
-                                  trailing: PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert, color: Colors.white),
-                                    onSelected: (value) {
-                                      final filePath = fileData['path'];
-                                      if (value == 'Save') {
-                                        openInMediaPlayer(filePath);
-                                      } else if (value == 'Share') {
-                                        shareFile(filePath);
-                                      } else if (value == 'Delete') {
-                                        deleteFile(filePath);
-                                      } else if (value == 'Rename') {
-                                        showDialog(
-                                          context: context,
-                                          builder: (context) {
-                                            final controller = TextEditingController();
-                                            return AlertDialog(
-                                              backgroundColor: Colors.black87,
-                                              title: const Text('Rename File', style: TextStyle(color: Colors.white)),
-                                              content: TextField(
-                                                controller: controller,
-                                                style: const TextStyle(color: Colors.white),
-                                                decoration: const InputDecoration(
-                                                  hintText: 'Enter new file name',
-                                                  hintStyle: TextStyle(color: Colors.white70),
-                                                ),
+                  child: videos.isEmpty
+                      ? const Center(
+                          child: Text("No videos found.", style: TextStyle(color: Colors.white54)),
+                        )
+                      : ListView.builder(
+                          itemCount: videos.length,
+                          itemBuilder: (_, index) {
+                            final fileData = videos[index];
+                            final filePath = fileData['path'];
+                            return Container(
+                              margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 32),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1A1A1A),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white12),
+                              ),
+                              child: ListTile(
+                                leading: const Icon(Icons.video_file, color: Colors.white, size: 32),
+                                title: Text(fileData['filename'], style: const TextStyle(color: Colors.white)),
+                                subtitle: Text(fileData['size'], style: const TextStyle(color: Colors.white70)),
+                                trailing: PopupMenuButton<String>(
+                                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                                  onSelected: (value) {
+                                    if (value == 'Save') {
+                                      saveToGallery(filePath);
+                                    } else if (value == 'Share') {
+                                      shareFile(filePath);
+                                    } else if (value == 'Delete') {
+                                      deleteFile(filePath);
+                                    } else if (value == 'Rename') {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) {
+                                          final controller = TextEditingController();
+                                          return AlertDialog(
+                                            backgroundColor: Colors.black87,
+                                            title: const Text('Rename File', style: TextStyle(color: Colors.white)),
+                                            content: TextField(
+                                              controller: controller,
+                                              style: const TextStyle(color: Colors.white),
+                                              decoration: const InputDecoration(
+                                                hintText: 'Enter new file name',
+                                                hintStyle: TextStyle(color: Colors.white70),
                                               ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () {
-                                                    Navigator.of(context).pop();
-                                                  },
-                                                  child: const Text('Cancel', style: TextStyle(color: Colors.red)),
-                                                ),
-                                                TextButton(
-                                                  onPressed: () {
-                                                    renameFile(filePath, controller.text);
-                                                    Navigator.of(context).pop();
-                                                  },
-                                                  child: const Text('Rename', style: TextStyle(color: Colors.green)),
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        );
-                                      }
-                                    },
-                                    itemBuilder: (_) => const [
-                                      PopupMenuItem(value: 'Save', child: Text('Save')),
-                                      PopupMenuItem(value: 'Share', child: Text('Share')),
-                                      PopupMenuItem(value: 'Rename', child: Text('Rename')),
-                                      PopupMenuItem(value: 'Delete', child: Text('Delete')),
-                                    ],
-                                  ),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(context),
+                                                child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+                                              ),
+                                              TextButton(
+                                                onPressed: () {
+                                                  renameFile(filePath, controller.text);
+                                                  Navigator.pop(context);
+                                                },
+                                                child: const Text('Rename', style: TextStyle(color: Colors.green)),
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      );
+                                    }
+                                  },
+                                  itemBuilder: (_) => const [
+                                    PopupMenuItem(value: 'Save', child: Text('Save to Gallery')),
+                                    PopupMenuItem(value: 'Share', child: Text('Share')),
+                                    PopupMenuItem(value: 'Rename', child: Text('Rename')),
+                                    PopupMenuItem(value: 'Delete', child: Text('Delete')),
+                                  ],
                                 ),
-                              );
-                            },
-                          ),
-                  ),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),

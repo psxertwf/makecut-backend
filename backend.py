@@ -13,7 +13,7 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-DOWNLOAD_DIR = Path.home() / "Desktop" / "makecut" / "downloads"
+DOWNLOAD_DIR = Path("/tmp/makecut/downloads")  # ✅ Compatible with iOS
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 HISTORY_FILE = DOWNLOAD_DIR / "history.json"
@@ -31,13 +31,6 @@ def wait_for_file_release(filepath, retries=30):
 def sanitize_filename(name):
     name = re.sub(r'[\\/*?:"<>|]', "", name)
     return name.strip().replace(" ", "_")[:80]
-
-def open_with_default_media_player(filepath):
-    try:
-        if Path(filepath).exists():
-            subprocess.Popen(f'start "" "{filepath}"', shell=True)
-    except Exception as e:
-        print(f"Failed to open media player: {e}")
 
 def is_snapchat_url(url):
     return "snapchat.com" in url
@@ -110,7 +103,6 @@ def download_video(url, include_audio, quality):
                     os.remove(final_path)
                     shutil.move(muted_path, final_path)
 
-        open_with_default_media_player(str(final_path))
         return True, str(final_path), ""
 
     except Exception as e:
@@ -214,7 +206,6 @@ def save_video():
     filepath = data.get("path")
     if not filepath or not Path(filepath).exists():
         return jsonify({"status": "fail", "message": "File not found"}), 400
-    open_with_default_media_player(filepath)
     return jsonify({"status": "success"})
 
 @app.route("/autosave", methods=["GET"])
@@ -233,9 +224,6 @@ def set_autosave():
         json.dump({"enabled": enabled}, f)
     return jsonify({"status": "updated", "enabled": enabled})
 
-import os
-
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-

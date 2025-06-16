@@ -1,4 +1,6 @@
-platform :ios, '15.0'
+platform :ios, '13.0'
+
+source 'https://github.com/CocoaPods/Specs.git'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
@@ -28,6 +30,9 @@ flutter_ios_podfile_setup
 target 'Runner' do
   use_frameworks!
 
+  # 🚀 Force FFmpegKit version 6.0.0 from direct Podspec link
+  pod 'ffmpeg-kit-ios-full', :podspec => 'https://raw.githubusercontent.com/luthviar/ffmpeg-kit-ios-full/main/ffmpeg-kit-ios-full.podspec'
+
   flutter_install_all_ios_pods(File.dirname(File.realpath(__FILE__)))
 
   target 'RunnerTests' do
@@ -39,11 +44,8 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
 
-    # ✅ Prevent iOS simulator + plugin build issues (esp. flutter_downloader)
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
     end
   end
 end
-
